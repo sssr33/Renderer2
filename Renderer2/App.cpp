@@ -1,5 +1,6 @@
 ﻿#include "pch.h"
 #include "App.h"
+#include "Renderer\Renderer.h"
 
 #include <ppltasks.h>
 
@@ -82,9 +83,9 @@ void App::SetWindow(CoreWindow^ window)
 // Initializes scene resources, or loads a previously saved app state.
 void App::Load(Platform::String^ entryPoint)
 {
-	if (m_main == nullptr)
-	{
-		m_main = std::unique_ptr<Renderer2Main>(new Renderer2Main(m_deviceResources));
+	if (!this->renderer) {
+		this->renderer = std::unique_ptr<IRenderer>(new Renderer(this->m_deviceResources));
+		this->renderer->CreateResources();
 	}
 }
 
@@ -148,7 +149,7 @@ void App::OnWindowSizeChanged(CoreWindow^ sender, WindowSizeChangedEventArgs^ ar
 {
 	concurrency::critical_section::scoped_lock lk(this->cs);
 	m_deviceResources->SetLogicalSize(Size(sender->Bounds.Width, sender->Bounds.Height));
-	m_main->CreateWindowSizeDependentResources();
+	this->renderer->CreateResources(true);
 }
 
 void App::OnVisibilityChanged(CoreWindow^ sender, VisibilityChangedEventArgs^ args)
@@ -172,14 +173,14 @@ void App::OnDpiChanged(DisplayInformation^ sender, Object^ args)
 {
 	concurrency::critical_section::scoped_lock lk(this->cs);
 	m_deviceResources->SetDpi(sender->LogicalDpi);
-	m_main->CreateWindowSizeDependentResources();
+	this->renderer->CreateResources(true);
 }
 
 void App::OnOrientationChanged(DisplayInformation^ sender, Object^ args)
 {
 	concurrency::critical_section::scoped_lock lk(this->cs);
 	m_deviceResources->SetCurrentOrientation(sender->CurrentOrientation);
-	m_main->CreateWindowSizeDependentResources();
+	this->renderer->CreateResources(true);
 }
 
 void App::OnDisplayContentsInvalidated(DisplayInformation^ sender, Object^ args)
@@ -199,9 +200,9 @@ void App::StartRenderThread() {
 	{
 		while (op->Status != Windows::Foundation::AsyncStatus::Canceled && !m_windowClosed) {
 			concurrency::critical_section::scoped_lock lk(this->cs);
-			m_main->Update();
+			this->renderer->UpdateMain();
 
-			if (m_main->Render()) {
+			if (this->renderer->RenderMain()) {
 				m_deviceResources->Present();
 			}
 		}

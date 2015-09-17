@@ -2,7 +2,7 @@
 
 #include "pch.h"
 #include "Common\DeviceResources.h"
-#include "Renderer2Main.h"
+#include "Renderer\IRenderer.h"
 
 namespace Renderer2
 {
@@ -40,7 +40,7 @@ namespace Renderer2
 
 		concurrency::critical_section cs;
 		std::shared_ptr<DX::DeviceResources> m_deviceResources;
-		std::unique_ptr<Renderer2Main> m_main;
+		std::unique_ptr<IRenderer> renderer;
 		bool m_windowClosed;
 
 		void StartRenderThread();
