@@ -1,0 +1,57 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="14.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClInclude Include="libhelpers\Containers\ChunkedDataBuffer.h" />
+    <ClInclude Include="libhelpers\Containers\ConcurrentQueue.h" />
+    <ClInclude Include="libhelpers\Metainfo\PointerGetter.h" />
+    <ClInclude Include="libhelpers\Metainfo\RawType.h" />
+    <ClInclude Include="libhelpers\Metainfo\Signature.h" />
+    <ClInclude Include="libhelpers\PixelConverter\PixelConverter.h" />
+    <ClInclude Include="libhelpers\PixelConverter\PixelConverterCopy.h" />
+    <ClInclude Include="libhelpers\PixelConverter\PixelConverterFactory.h" />
+    <ClInclude Include="libhelpers\PixelConverter\PixelConverterStd8Bit.h" />
+    <ClInclude Include="libhelpers\service\Operation.h" />
+    <ClInclude Include="libhelpers\service\Service.h" />
+    <ClInclude Include="libhelpers\Text\UriCodec.h" />
+    <ClInclude Include="libhelpers\Thread\PPL\critical_section_guard.h" />
+    <ClInclude Include="libhelpers\Thread\PPL\critical_section_lock.h" />
+    <ClInclude Include="libhelpers\Thread\ThreadPool.h" />
+    <ClInclude Include="libhelpers\Thread\ThreadTask.h" />
+    <ClInclude Include="libhelpers\Thread\ThreadTaskBase.h" />
+    <ClInclude Include="libhelpers\WinRT\HDataWinRT.h" />
+    <ClInclude Include="libhelpers\AlignedAllocator.h" />
+    <ClInclude Include="libhelpers\array_wrapper.h" />
+    <ClInclude Include="libhelpers\async_class.h" />
+    <ClInclude Include="libhelpers\bit_view.h" />
+    <ClInclude Include="libhelpers\cond_add_reference.h" />
+    <ClInclude Include="libhelpers\config.h" />
+    <ClInclude Include="libhelpers\CoUniquePtr.h" />
+    <ClInclude Include="libhelpers\H.h" />
+    <ClInclude Include="libhelpers\HData.h" />
+    <ClInclude Include="libhelpers\HMath.h" />
+    <ClInclude Include="libhelpers\HSystem.h" />
+    <ClInclude Include="libhelpers\HText.h" />
+    <ClInclude Include="libhelpers\HTime.h" />
+    <ClInclude Include="libhelpers\ImageUtils.h" />
+    <ClInclude Include="libhelpers\ImageUtilsEncodeOptions.h" />
+    <ClInclude Include="libhelpers\rational.h" />
+    <ClInclude Include="libhelpers\raw_ptr.h" />
+    <ClInclude Include="libhelpers\result.h" />
+    <ClInclude Include="libhelpers\ScopedTimer.h" />
+    <ClInclude Include="libhelpers\Timer.h" />
+    <ClInclude Include="libhelpers\vector_pool.h" />
+    <ClInclude Include="libhelpers\vector_queue.h" />
+    <ClInclude Include="libhelpers\Containers\comptr_vector.h" />
+    <ClInclude Include="libhelpers\Thread\PPL\safe_task.h" />
+    <ClInclude Include="libhelpers\EnumClassBitFlagOperators.h" />
+    <ClInclude Include="libhelpers\Thread\critical_section.h" />
+    <ClInclude Include="libhelpers\Thread\condition_variable.h" />
+    <ClInclude Include="libhelpers\Macros.h" />
+    <ClInclude Include="libhelpers\PlatformStringBuilder.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="libhelpers\PixelConverter\PixelConverter.cpp" />
+    <ClCompile Include="libhelpers\PixelConverter\PixelConverterCopy.cpp" />
+    <ClCompile Include="libhelpers\Text\UriCodec.cpp" />
+  </ItemGroup>
+</Project>
