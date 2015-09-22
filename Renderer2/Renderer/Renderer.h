@@ -33,6 +33,14 @@ private:
 	uint32	indexCount;
 	float rotationAngle;
 
+	void DrawObjects();
+
+	void DrawObject(
+		DirectX::XMFLOAT3 size,
+		DirectX::XMFLOAT3 rot,
+		DirectX::XMFLOAT3 pos, 
+		DirectX::XMMATRIX &baseTransform);
+
 	void MakePlane(
 		DirectX::XMFLOAT3 size,
 		DirectX::XMFLOAT3 vector,

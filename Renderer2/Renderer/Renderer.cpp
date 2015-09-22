@@ -240,85 +240,7 @@ void Renderer::Render() {
 		0
 		);
 
-
-	auto transform0 =
-		DirectX::XMMatrixRotationY(DirectX::XMConvertToRadians(this->rotationAngle)) *
-		DirectX::XMMatrixTranslation(0, 0, 2);
-
-	auto transform00 = DirectX::XMMatrixScaling(4.0f, 0.25f, 4.0f) * transform0;
-
-	DirectX::XMStoreFloat4x4(&this->constantBufferData.model, DirectX::XMMatrixTranspose(transform00));
-
-	// Prepare the constant buffer to send it to the graphics device.
-	context->UpdateSubresource(
-		this->constantBuffer.Get(),
-		0,
-		NULL,
-		&this->constantBufferData,
-		0,
-		0
-		);
-
-
-	// Draw the objects.
-	context->DrawIndexed(
-		this->indexCount,
-		0,
-		0
-		);
-
-
-	auto transform1 =
-		DirectX::XMMatrixTranslation(0, 0.5f + 0.125f, 1.5f);
-
-
-	DirectX::XMStoreFloat4x4(&this->constantBufferData.model, DirectX::XMMatrixTranspose(transform1 * transform0));
-
-	// Prepare the constant buffer to send it to the graphics device.
-	context->UpdateSubresource(
-		this->constantBuffer.Get(),
-		0,
-		NULL,
-		&this->constantBufferData,
-		0,
-		0
-		);
-
-
-	// Draw the objects.
-	context->DrawIndexed(
-		this->indexCount,
-		0,
-		0
-		);
-
-
-	auto transform2 =
-		DirectX::XMMatrixScaling(0.25f, 0.25f, 0.25f) *
-		DirectX::XMMatrixTranslation(0, 0.5f + 0.125f, 0.5f - 0.125f);
-
-
-	DirectX::XMStoreFloat4x4(&this->constantBufferData.model, DirectX::XMMatrixTranspose(transform2 * transform1 * transform0));
-
-	// Prepare the constant buffer to send it to the graphics device.
-	context->UpdateSubresource(
-		this->constantBuffer.Get(),
-		0,
-		NULL,
-		&this->constantBufferData,
-		0,
-		0
-		);
-
-
-	// Draw the objects.
-	context->DrawIndexed(
-		this->indexCount,
-		0,
-		0
-		);
-
-
+	this->DrawObjects();
 
 	return;
 
@@ -331,8 +253,57 @@ void Renderer::Render() {
 
 	DirectX::XMStoreFloat4(&this->constantBufferData.color, DirectX::Colors::Red);
 
+	Microsoft::WRL::ComPtr<ID3D11RasterizerState> prevRsState;
+
+	context->RSGetState(prevRsState.GetAddressOf());
+
+	context->RSSetState(this->rsState.Get());
+
+	this->DrawObjects();
+
+	context->RSSetState(prevRsState.Get());
+}
+
+void Renderer::DrawObjects() {
+	DirectX::XMMATRIX baseTransform = DirectX::XMMatrixIdentity();
+
+	this->DrawObject(
+		DirectX::XMFLOAT3(4.0f, 0.25f, 4.0f),
+		DirectX::XMFLOAT3(0, DirectX::XMConvertToRadians(this->rotationAngle), 0),
+		DirectX::XMFLOAT3(0, 0, 2),
+		baseTransform);
+
+	this->DrawObject(
+		DirectX::XMFLOAT3(1, 1, 1),
+		DirectX::XMFLOAT3(0, 0, 0),
+		DirectX::XMFLOAT3(0, 0.5f + 0.125f, 1.5f),
+		baseTransform);
+
+	this->DrawObject(
+		DirectX::XMFLOAT3(0.25f, 0.25f, 0.25f),
+		DirectX::XMFLOAT3(0, 0, 0),
+		DirectX::XMFLOAT3(0, 0.5f + 0.125f, 0.5f - 0.125f),
+		baseTransform);
+}
+
+void Renderer::DrawObject(
+	DirectX::XMFLOAT3 size,
+	DirectX::XMFLOAT3 rot,
+	DirectX::XMFLOAT3 pos,
+	DirectX::XMMATRIX &baseTransform)
+{
+	auto ctx = this->dx->GetD3DDeviceContext();
+	auto objTransform = DirectX::XMMatrixMultiply(
+		DirectX::XMMatrixRotationRollPitchYaw(rot.x, rot.y, rot.z), 
+		DirectX::XMMatrixTranslation(pos.x, pos.y, pos.z));
+
+	baseTransform = DirectX::XMMatrixMultiply(objTransform, baseTransform);
+
+	objTransform = DirectX::XMMatrixMultiplyTranspose(DirectX::XMMatrixScaling(size.x, size.y, size.z), baseTransform);
+	DirectX::XMStoreFloat4x4(&this->constantBufferData.model, objTransform);
+
 	// Prepare the constant buffer to send it to the graphics device.
-	context->UpdateSubresource(
+	ctx->UpdateSubresource(
 		this->constantBuffer.Get(),
 		0,
 		NULL,
@@ -341,19 +312,13 @@ void Renderer::Render() {
 		0
 		);
 
-	Microsoft::WRL::ComPtr<ID3D11RasterizerState> prevRsState;
 
-	context->RSGetState(prevRsState.GetAddressOf());
-
-	context->RSSetState(this->rsState.Get());
-
-	context->DrawIndexed(
+	// Draw the objects.
+	ctx->DrawIndexed(
 		this->indexCount,
 		0,
 		0
 		);
-
-	context->RSSetState(prevRsState.Get());
 }
 
 void Renderer::MakePlane(
