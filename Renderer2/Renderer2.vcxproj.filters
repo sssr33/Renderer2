@@ -74,6 +74,8 @@
     <ClInclude Include="pch.h" />
     <ClInclude Include="Renderer\IRenderer.h" />
     <ClInclude Include="Renderer\Renderer.h" />
+    <ClInclude Include="Renderer\CBuffer\ObjectCBuffer.h" />
+    <ClInclude Include="Renderer\CBuffer\PsTexRectCbuffer.h" />
   </ItemGroup>
   <ItemGroup>
     <Image Include="Assets\StoreLogo.png">
@@ -85,5 +87,11 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="Renderer2_TemporaryKey.pfx" />
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Renderer\Shaders\vs_NormalZ.hlsl" />
+    <FxCompile Include="Renderer\Shaders\ps_NormalZ.hlsl" />
+    <FxCompile Include="Renderer\Shaders\vs_TexRect.hlsl" />
+    <FxCompile Include="Renderer\Shaders\ps_TexRect.hlsl" />
   </ItemGroup>
 </Project>

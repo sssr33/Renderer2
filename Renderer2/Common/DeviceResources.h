@@ -27,6 +27,7 @@ namespace DX
 		// Device Accessors.
 		Windows::Foundation::Size GetOutputSize() const					{ return m_outputSize; }
 		Windows::Foundation::Size GetLogicalSize() const				{ return m_logicalSize; }
+		Windows::Foundation::Size GetRenderTargetSize() const           { return m_d3dRenderTargetSize; }
 
 		// D3D Accessors.
 		ID3D11Device2*			GetD3DDevice() const					{ return m_d3dDevice.Get(); }

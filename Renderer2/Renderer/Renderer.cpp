@@ -127,6 +127,9 @@ void Renderer::CreateDeviceDependentResources() {
 
 	hr = d3dDev->CreateRasterizerState(&rsDesc, this->rsState.GetAddressOf());
 	H::System::ThrowIfFailed(hr);
+
+	this->CreateObjResources();
+	this->CreateTexRectResources();
 }
 
 void Renderer::ReleaseDeviceDependentResources() {
@@ -134,7 +137,6 @@ void Renderer::ReleaseDeviceDependentResources() {
 }
 
 void Renderer::CreateWindowSizeDependentResources() {
-
 	DirectX::XMStoreFloat4(&this->constantBufferData.eyePos, DirectX::XMVectorSet(-2, 2, 0, 1));
 	DirectX::XMStoreFloat4(&this->constantBufferData.lightPos, DirectX::XMVectorSet(-1, 2, 0, 1));
 
@@ -179,10 +181,13 @@ void Renderer::CreateWindowSizeDependentResources() {
 			XMMatrixTranspose(perspectiveMatrix * orientationMatrix)
 			);
 	}
+
+	this->CreateLightPrePassTextures();
+	this->CreateLightPrePassShaders();
 }
 
 void Renderer::Update(DX::StepTimer const& timer) {
-	this->rotationAngle += timer.GetElapsedSeconds() * 45.0f;
+	this->rotationAngle += (float)timer.GetElapsedSeconds() * 45.0f;
 }
 
 void Renderer::Render() {
@@ -190,24 +195,26 @@ void Renderer::Render() {
 
 	DirectX::XMStoreFloat4(&this->constantBufferData.color, DirectX::Colors::White);
 
-	// Each vertex is one instance of the VertexPositionColor struct.
-	UINT stride = sizeof(DirectX::XMFLOAT3);
-	UINT offset = 0;
-	context->IASetVertexBuffers(
-		0,
-		1,
-		this->vertexBuffer.GetAddressOf(),
-		&stride,
-		&offset
-		);
+	{
+		// Each vertex is one instance of the VertexPositionColor struct.
+		UINT stride = sizeof(DirectX::XMFLOAT3);
+		UINT offset = 0;
+		context->IASetVertexBuffers(
+			0,
+			1,
+			this->vertexBuffer.GetAddressOf(),
+			&stride,
+			&offset
+			);
 
-	context->IASetVertexBuffers(
-		1,
-		1,
-		this->normalBuffer.GetAddressOf(),
-		&stride,
-		&offset
-		);
+		context->IASetVertexBuffers(
+			1,
+			1,
+			this->normalBuffer.GetAddressOf(),
+			&stride,
+			&offset
+			);
+	}
 
 	context->IASetIndexBuffer(
 		this->indexBuffer.Get(),
@@ -242,10 +249,68 @@ void Renderer::Render() {
 
 	this->DrawObjects();
 
-	return;
-
 	Microsoft::WRL::ComPtr<ID3D11RenderTargetView> rt;
 	Microsoft::WRL::ComPtr<ID3D11DepthStencilView> ds;
+
+	context->OMGetRenderTargets(1, rt.GetAddressOf(), ds.GetAddressOf());
+	context->ClearDepthStencilView(ds.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+
+	context->ClearRenderTargetView(this->normalZRtv.Get(), DirectX::Colors::Transparent);
+	context->OMSetRenderTargets(1, this->normalZRtv.GetAddressOf(), ds.Get());
+
+	// Attach our vertex shader.
+	context->VSSetShader(
+		this->normalZVs.Get(),
+		nullptr,
+		0
+		);
+
+	// Attach our pixel shader.
+	context->PSSetShader(
+		this->normalZPs.Get(),
+		nullptr,
+		0
+		);
+
+	this->DrawObjects();
+
+	context->ClearDepthStencilView(ds.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
+	context->OMSetRenderTargets(1, rt.GetAddressOf(), ds.Get());
+
+	DirectX::XMStoreFloat4x4(&this->objCBufferData.View, DirectX::XMMatrixIdentity());
+	this->objCBufferData.Projection = this->constantBufferData.projection;
+
+	float zscale = 0.5f;//1.0f / 10.0f;
+
+	DirectX::XMMATRIX tmpColor = {
+		0.0f, 0.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, 0.0f,
+		0.0f, 0.0f, 0.0f, 0.0f,
+		zscale, zscale, zscale, zscale
+	};
+
+	DirectX::XMStoreFloat4x4(&this->texRectPsCBufferData.ColorMtrx, DirectX::XMMatrixTranspose(tmpColor));
+	DirectX::XMStoreFloat4(&this->texRectPsCBufferData.ColorAdd, DirectX::g_XMZero);
+
+	auto tmpSize = this->dx->GetRenderTargetSize();
+
+	DirectX::XMFLOAT3 texRectPos;
+	DirectX::XMFLOAT3 texRectSize = DirectX::XMFLOAT3(tmpSize.Width / tmpSize.Height * 0.5f, 0.5f, 1.0f);
+
+	texRectPos.x = -(tmpSize.Width / tmpSize.Height) + texRectSize.x * 0.5f;
+	texRectPos.y = 1.0f - texRectSize.y * 0.5f;
+	texRectPos.z = 1.0f;
+
+	this->DrawTexRect(
+		texRectSize,
+		DirectX::XMFLOAT3(0, 0, 0),
+		texRectPos,
+		this->normalZSrv.Get());
+
+	return;
+
+	//Microsoft::WRL::ComPtr<ID3D11RenderTargetView> rt;
+	//Microsoft::WRL::ComPtr<ID3D11DepthStencilView> ds;
 
 	context->OMGetRenderTargets(1, rt.GetAddressOf(), ds.GetAddressOf());
 	context->ClearDepthStencilView(ds.Get(), D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1.0f, 0);
@@ -319,6 +384,89 @@ void Renderer::DrawObject(
 		0,
 		0
 		);
+}
+
+void Renderer::DrawTexRect(
+	DirectX::XMFLOAT3 size,
+	DirectX::XMFLOAT3 rot,
+	DirectX::XMFLOAT3 pos,
+	ID3D11ShaderResourceView *tex) 
+{
+	auto objTransform = DirectX::XMMatrixMultiply(
+		DirectX::XMMatrixRotationRollPitchYaw(rot.x, rot.y, rot.z),
+		DirectX::XMMatrixTranslation(pos.x, pos.y, pos.z));
+
+	objTransform = DirectX::XMMatrixMultiplyTranspose(DirectX::XMMatrixScaling(size.x, size.y, size.z), objTransform);
+
+	DirectX::XMStoreFloat4x4(&this->objCBufferData.World, objTransform);
+
+	auto context = this->dx->GetD3DDeviceContext();
+
+	context->UpdateSubresource(
+		this->objCBuffer.Get(),
+		0,
+		NULL,
+		&this->objCBufferData,
+		0,
+		0
+		);
+
+	context->UpdateSubresource(
+		this->texRectPsCBuffer.Get(),
+		0,
+		NULL,
+		&this->texRectPsCBufferData,
+		0,
+		0
+		);
+
+	{
+		// Each vertex is one instance of the VertexPositionColor struct.
+		UINT stride = sizeof(DirectX::XMFLOAT2);
+		UINT offset = 0;
+		context->IASetVertexBuffers(
+			0,
+			1,
+			this->texRectVertexBuf.GetAddressOf(),
+			&stride,
+			&offset
+			);
+	}
+
+	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLESTRIP);
+	context->IASetInputLayout(this->texRectInputLayout.Get());
+
+	// Attach our vertex shader.
+	context->VSSetShader(
+		this->texRectVs.Get(),
+		nullptr,
+		0
+		);
+
+	// Send the constant buffer to the graphics device.
+	context->VSSetConstantBuffers(
+		0,
+		1,
+		this->objCBuffer.GetAddressOf()
+		);
+
+	// Attach our pixel shader.
+	context->PSSetShader(
+		this->texRectPs.Get(),
+		nullptr,
+		0
+		);
+
+	// Send the constant buffer to the graphics device.
+	context->PSSetConstantBuffers(
+		0,
+		1,
+		this->texRectPsCBuffer.GetAddressOf()
+		);
+
+	context->PSSetShaderResources(0, 1, &tex);
+
+	context->Draw(4, 0);
 }
 
 void Renderer::MakePlane(
@@ -400,4 +548,147 @@ void Renderer::MakePlane(
 	indices.push_back(0 + baseIndex);
 	indices.push_back(2 + baseIndex);
 	indices.push_back(3 + baseIndex);
+}
+
+void Renderer::CreateLightPrePassTextures() {
+	HRESULT hr = S_OK;
+	D3D11_TEXTURE2D_DESC texDesc;
+	D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
+	D3D11_RENDER_TARGET_VIEW_DESC rtvDesc;
+	auto d3dDev = this->dx->GetD3DDevice();
+	auto size = this->dx->GetRenderTargetSize();
+
+	texDesc.Width = (uint32_t)size.Width;
+	texDesc.Height = (uint32_t)size.Height;
+	texDesc.MipLevels = 1;
+	texDesc.ArraySize = 1;
+	texDesc.Format = DXGI_FORMAT::DXGI_FORMAT_R16G16B16A16_FLOAT;
+	texDesc.SampleDesc.Count = 1;
+	texDesc.SampleDesc.Quality = 0;
+	texDesc.Usage = D3D11_USAGE::D3D11_USAGE_DEFAULT;
+	texDesc.BindFlags = 
+		D3D11_BIND_FLAG::D3D11_BIND_SHADER_RESOURCE | 
+		D3D11_BIND_FLAG::D3D11_BIND_RENDER_TARGET;
+	texDesc.CPUAccessFlags = 0;
+	texDesc.MiscFlags = 0;
+
+	hr = d3dDev->CreateTexture2D(&texDesc, nullptr, this->normalZ.ReleaseAndGetAddressOf());
+	H::System::ThrowIfFailed(hr);
+
+	srvDesc.Format = texDesc.Format;
+	srvDesc.ViewDimension = D3D11_SRV_DIMENSION::D3D11_SRV_DIMENSION_TEXTURE2D;
+	srvDesc.Texture2D.MipLevels = 1;
+	srvDesc.Texture2D.MostDetailedMip = 0;
+
+	hr = d3dDev->CreateShaderResourceView(this->normalZ.Get(), &srvDesc, this->normalZSrv.ReleaseAndGetAddressOf());
+	H::System::ThrowIfFailed(hr);
+
+	rtvDesc.Format = texDesc.Format;
+	rtvDesc.ViewDimension = D3D11_RTV_DIMENSION::D3D11_RTV_DIMENSION_TEXTURE2D;
+	rtvDesc.Texture2D.MipSlice = 0;
+
+	hr = d3dDev->CreateRenderTargetView(this->normalZ.Get(), &rtvDesc, this->normalZRtv.ReleaseAndGetAddressOf());
+	H::System::ThrowIfFailed(hr);
+
+	//texDesc.Format = DXGI_FORMAT::DXGI_FORMAT_R8G8B8A8_UNORM;
+
+	hr = d3dDev->CreateTexture2D(&texDesc, nullptr, this->lighting.ReleaseAndGetAddressOf());
+	H::System::ThrowIfFailed(hr);
+
+	srvDesc.Format = texDesc.Format;
+
+	hr = d3dDev->CreateShaderResourceView(this->lighting.Get(), &srvDesc, this->lightingSrv.ReleaseAndGetAddressOf());
+	H::System::ThrowIfFailed(hr);
+
+	rtvDesc.Format = texDesc.Format;
+
+	hr = d3dDev->CreateRenderTargetView(this->lighting.Get(), &rtvDesc, this->lightingRtv.ReleaseAndGetAddressOf());
+	H::System::ThrowIfFailed(hr);
+}
+
+void Renderer::CreateLightPrePassShaders() {
+	HRESULT hr = S_OK;
+	auto d3dDev = this->dx->GetD3DDevice();
+
+	auto vsData = H::System::LoadPackageFile(L"vs_NormalZ.cso");
+	auto psData = H::System::LoadPackageFile(L"ps_NormalZ.cso");
+
+	hr = d3dDev->CreateVertexShader(vsData.data(), vsData.size(), nullptr, this->normalZVs.GetAddressOf());
+	H::System::ThrowIfFailed(hr);
+
+	hr = d3dDev->CreatePixelShader(psData.data(), psData.size(), nullptr, this->normalZPs.GetAddressOf());
+	H::System::ThrowIfFailed(hr);
+}
+
+void Renderer::CreateObjResources() {
+	HRESULT hr = S_OK;
+	auto d3dDev = this->dx->GetD3DDevice();
+	D3D11_BUFFER_DESC bufDesc;
+
+	bufDesc.ByteWidth = sizeof(ObjectCBuffer);
+	bufDesc.Usage = D3D11_USAGE::D3D11_USAGE_DEFAULT;
+	bufDesc.BindFlags = D3D11_BIND_FLAG::D3D11_BIND_CONSTANT_BUFFER;
+	bufDesc.CPUAccessFlags = 0;
+	bufDesc.MiscFlags = 0;
+	bufDesc.StructureByteStride = 0;
+
+	hr = d3dDev->CreateBuffer(&bufDesc, nullptr, this->objCBuffer.GetAddressOf());
+	H::System::ThrowIfFailed(hr);
+
+	/*D3D11_SAMPLER_DESC samplerDesc;
+
+	hr = d3dDev->CreateSamplerState(&samplerDesc, this->linearSampler.GetAddressOf());
+	H::System::ThrowIfFailed(hr);*/
+}
+
+void Renderer::CreateTexRectResources() {
+	HRESULT hr = S_OK;
+	auto d3dDev = this->dx->GetD3DDevice();
+	D3D11_BUFFER_DESC bufDesc;
+	D3D11_SUBRESOURCE_DATA subResData;
+
+	bufDesc.ByteWidth = sizeof(PsTexRectCbuffer);
+	bufDesc.Usage = D3D11_USAGE::D3D11_USAGE_DEFAULT;
+	bufDesc.BindFlags = D3D11_BIND_FLAG::D3D11_BIND_CONSTANT_BUFFER;
+	bufDesc.CPUAccessFlags = 0;
+	bufDesc.MiscFlags = 0;
+	bufDesc.StructureByteStride = 0;
+
+	hr = d3dDev->CreateBuffer(&bufDesc, nullptr, this->texRectPsCBuffer.GetAddressOf());
+	H::System::ThrowIfFailed(hr);
+
+	const DirectX::XMFLOAT2 quadStrip[] = {
+		DirectX::XMFLOAT2(-0.5f, 0.5f),
+		DirectX::XMFLOAT2(0.5f, 0.5f),
+		DirectX::XMFLOAT2(-0.5f, -0.5f),
+		DirectX::XMFLOAT2(0.5f, -0.5f),
+	};
+
+	bufDesc.ByteWidth = sizeof(quadStrip);
+	bufDesc.Usage = D3D11_USAGE::D3D11_USAGE_IMMUTABLE;
+	bufDesc.BindFlags = D3D11_BIND_FLAG::D3D11_BIND_VERTEX_BUFFER;
+
+	subResData.pSysMem = quadStrip;
+	subResData.SysMemPitch = subResData.SysMemSlicePitch = 0;
+
+	hr = d3dDev->CreateBuffer(&bufDesc, &subResData, this->texRectVertexBuf.GetAddressOf());
+	H::System::ThrowIfFailed(hr);
+
+
+	auto vsData = H::System::LoadPackageFile(L"vs_TexRect.cso");
+	auto psData = H::System::LoadPackageFile(L"ps_TexRect.cso");
+
+	hr = d3dDev->CreateVertexShader(vsData.data(), vsData.size(), nullptr, this->texRectVs.GetAddressOf());
+	H::System::ThrowIfFailed(hr);
+
+	hr = d3dDev->CreatePixelShader(psData.data(), psData.size(), nullptr, this->texRectPs.GetAddressOf());
+	H::System::ThrowIfFailed(hr);
+
+	static const D3D11_INPUT_ELEMENT_DESC vertexDesc[] =
+	{
+		{ "POSITION", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+	};
+
+	hr = d3dDev->CreateInputLayout(vertexDesc, ARRAY_SIZE(vertexDesc), vsData.data(), vsData.size(), this->texRectInputLayout.GetAddressOf());
+	H::System::ThrowIfFailed(hr);
 }
